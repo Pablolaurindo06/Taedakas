@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ponto Fácil — Controle de Ponto</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f6f8;color:#17202a}
+header{background:#111827;color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:22px}header small{opacity:.7}
+nav{display:flex;gap:8px;padding:14px 24px;background:#fff;border-bottom:1px solid #ddd}
+nav button{border:0;background:#eef2f7;padding:10px 15px;border-radius:8px;cursor:pointer;font-weight:700}
+nav button.active{background:#111827;color:#fff}
+main{max-width:1100px;margin:24px auto;padding:0 18px}.tab{display:none}.tab.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:15px}
+.card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 10px #0000000d}
+.metric{font-size:28px;font-weight:800;margin-top:7px}.muted{color:#687386;font-size:13px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+button.primary,button.success,button.danger,button.secondary{border:0;color:#fff;padding:12px 15px;border-radius:9px;cursor:pointer;font-weight:700}
+.primary{background:#2563eb}.success{background:#16a34a}.danger{background:#dc2626}.secondary{background:#64748b}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select{width:100%;padding:11px;border:1px solid #d2d8e0;border-radius:8px;margin-top:6px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}th,td{padding:11px;border-bottom:1px solid #eee;text-align:left;font-size:14px}th{background:#f8fafc}
+.notice{padding:12px;border-radius:9px;background:#eff6ff;margin-top:15px}.dangerbox{background:#fef2f2}
+form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}.full{grid-column:1/-1}
+@media(max-width:700px){form{grid-template-columns:1fr}.actions button{width:100%}header{padding:16px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div><h1>⏱️ Ponto Fácil</h1><small>Controle de ponto dos colaboradores</small></div><div id="clock"></div></header>
+<nav>
+<button class="active" onclick="showTab('ponto',this)">Bater Ponto</button>
+<button onclick="showTab('colab',this)">Colaboradores</button>
+<button onclick="showTab('relatorio',this)">Relatório</button>
+</nav>
+<main>
+<section id="ponto" class="tab active">
+<div class="card">
+<h2>Registrar ponto</h2>
+<label>Colaborador</label>
+<select id="worker"></select>
+<div class="notice" id="status">Selecione um colaborador.</div>
+<div class="actions">
+<button class="success" id="inBtn" onclick="ponto('entrada')">🟢 Entrada</button>
+<button class="primary" id="intBtn" onclick="ponto('inicio_intervalo')">☕ Iniciar intervalo</button>
+<button class="secondary" id="volBtn" onclick="ponto('volta_intervalo')">🔵 Voltar do intervalo</button>
+<button class="danger" id="outBtn" onclick="ponto('saida')">🔴 Saída</button>
+</div>
+</div>
+<div class="grid" style="margin-top:15px">
+<div class="card"><div class="muted">Entrada de hoje</div><div class="metric" id="mEntrada">—</div></div>
+<div class="card"><div class="muted">Intervalo</div><div class="metric" id="mIntervalo">—</div></div>
+<div class="card"><div class="muted">Saída de hoje</div><div class="metric" id="mSaida">—</div></div>
+<div class="card"><div class="muted">Horas trabalhadas</div><div class="metric" id="mHoras">0h 00m</div></div>
+</div>
+</section>
+
+<section id="colab" class="tab">
+<div class="card">
+<h2>Colaboradores</h2>
+<form onsubmit="addWorker(event)">
+<div><label>Nome</label><input id="newName" required placeholder="Ex.: João Silva"></div>
+<div><label>Setor</label><input id="newSetor" placeholder="Ex.: Comercial"></div>
+<button class="success">Adicionar</button>
+</form>
+</div>
+<div class="card" style="margin-top:15px"><table><thead><tr><th>Nome</th><th>Setor</th><th>Ação</th></tr></thead><tbody id="workerTable"></tbody></table></div>
+</section>
+
+<section id="relatorio" class="tab">
+<div class="card">
+<h2>Relatório</h2>
+<div class="actions">
+<button class="primary" onclick="exportCSV()">⬇️ Exportar CSV</button>
+<button class="danger" onclick="clearAll()">Apagar todos os registros</button>
+</div>
+</div>
+<div class="card" style="margin-top:15px;overflow:auto"><table><thead><tr><th>Data</th><th>Colaborador</th><th>Entrada</th><th>Início int.</th><th>Volta</th><th>Saída</th><th>Horas</th></tr></thead><tbody id="reportTable"></tbody></table></div>
+</section>
+</main>
+<script>
+const KEY='ponto_facil_v1';
+let db=JSON.parse(localStorage.getItem(KEY)||'null')||{
+ workers:[{id:'1',name:'João Silva',setor:'Comercial'},{id:'2',name:'Maria Souza',setor:'Financeiro'}],
+ records:[]
+};
+function save(){localStorage.setItem(KEY,JSON.stringify(db));}
+function now(){return new Date()}
+function dateKey(d=now()){return d.toISOString().slice(0,10)}
+function time(d=now()){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+function showTab(id,btn){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');render();}
+function renderWorkers(){
+ let s=document.getElementById('worker');let old=s.value;
+ s.innerHTML=db.workers.map(w=>`<option value="${w.id}">${esc(w.name)}${w.setor?' — '+esc(w.setor):''}</option>`).join('');
+ if(db.workers.some(w=>w.id===old))s.value=old;
+ document.getElementById('workerTable').innerHTML=db.workers.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc(w.setor||'—')}</td><td><button class="danger" onclick="removeWorker('${w.id}')">Excluir</button></td></tr>`).join('');
+}
+function recFor(id,day=dateKey()){return db.records.find(r=>r.workerId===id&&r.date===day)}
+function renderCurrent(){
+ const id=document.getElementById('worker').value,r=recFor(id);
+ document.getElementById('status').textContent=r?`Status: ${r.saida?'expediente encerrado':r.volta_intervalo?'trabalhando':r.inicio_intervalo?'em intervalo':'trabalhando'}`:'Nenhum ponto registrado hoje.';
+ document.getElementById('mEntrada').textContent=r?.entrada||'—';document.getElementById('mIntervalo').textContent=r?.inicio_intervalo?(r.volta_intervalo?`${r.inicio_intervalo} / ${r.volta_intervalo}`:r.inicio_intervalo):'—';document.getElementById('mSaida').textContent=r?.saida||'—';
+ document.getElementById('mHoras').textContent=hours(r);
+ document.getElementById('inBtn').disabled=!!r?.entrada;document.getElementById('intBtn').disabled=!r?.entrada||!!r?.inicio_intervalo||!!r?.saida;document.getElementById('volBtn').disabled=!r?.inicio_intervalo||!!r?.volta_intervalo||!!r?.saida;document.getElementById('outBtn').disabled=!r?.entrada||!!r?.saida;
+}
+function ponto(type){
+ const id=document.getElementById('worker').value;if(!id)return;
+ let r=recFor(id);if(!r){r={workerId:id,date:dateKey()};db.records.push(r)}
+ r[type]=time();save();render();
+}
+function hours(r){
+ if(!r?.entrada)return '0h 00m';
+ let start=parse(r.entrada),end=r.saida?parse(r.saida):new Date();
+ let mins=Math.max(0,Math.floor((end-start)/60000));
+ if(r.inicio_intervalo&&r.volta_intervalo) mins-=Math.max(0,Math.floor((parse(r.volta_intervalo)-parse(r.inicio_intervalo))/60000));
+ mins=Math.max(0,mins);return Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m';
+}
+function parse(t){let [h,m]=t.split(':').map(Number),d=new Date();d.setHours(h,m,0,0);return d}
+function addWorker(e){e.preventDefault();db.workers.push({id:Date.now().toString(),name:document.getElementById('newName').value.trim(),setor:document.getElementById('newSetor').value.trim()});save();e.target.reset();render();}
+function removeWorker(id){if(confirm('Excluir este colaborador? Os registros dele também serão removidos.')){db.workers=db.workers.filter(w=>w.id!==id);db.records=db.records.filter(r=>r.workerId!==id);save();render()}}
+function renderReport(){
+ document.getElementById('reportTable').innerHTML=db.records.slice().reverse().map(r=>{let w=db.workers.find(x=>x.id===r.workerId);return `<tr><td>${r.date}</td><td>${esc(w?.name||'Excluído')}</td><td>${r.entrada||'—'}</td><td>${r.inicio_intervalo||'—'}</td><td>${r.volta_intervalo||'—'}</td><td>${r.saida||'—'}</td><td>${hours(r)}</td></tr>`}).join('');
+}
+function exportCSV(){let rows=[['Data','Colaborador','Entrada','Inicio intervalo','Volta intervalo','Saida','Horas']];db.records.forEach(r=>{let w=db.workers.find(x=>x.id===r.workerId);rows.push([r.date,w?.name||'Excluído',r.entrada||'',r.inicio_intervalo||'',r.volta_intervalo||'',r.saida||'',hours(r)])});let csv=rows.map(x=>x.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='relatorio_ponto.csv';a.click();}
+function clearAll(){if(confirm('Apagar TODOS os registros de ponto?')){db.records=[];save();render()}}
+function esc(x){return String(x).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function render(){renderWorkers();renderCurrent();renderReport()}
+document.getElementById('worker').addEventListener('change',renderCurrent);
+setInterval(()=>document.getElementById('clock').textContent=now().toLocaleString('pt-BR'),1000);
+render();
+</script>
+</body></html>
